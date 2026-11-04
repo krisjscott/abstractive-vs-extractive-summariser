@@ -9,6 +9,8 @@ summarisation, so visual information reaches the summary.
 
 import os
 
+from core.gpu_compat import GPU
+
 BLIP_MODEL = os.environ.get("BLIP_MODEL", "Salesforce/blip-image-captioning-base")
 
 _blip = None
@@ -20,7 +22,7 @@ def _load_blip():
         import torch
         from transformers import BlipForConditionalGeneration, BlipProcessor
         dtype = {"float16": torch.float16, "float32": torch.float32}[
-            os.environ.get("BLIP_DTYPE", "float16")]
+            os.environ.get("BLIP_DTYPE", "float32")]
         _blip = {
             "processor": BlipProcessor.from_pretrained(BLIP_MODEL),
             "model": BlipForConditionalGeneration.from_pretrained(
@@ -36,6 +38,8 @@ def caption_image(pil_image) -> str:
     pack = _load_blip()
     inputs = pack["processor"](images=pil_image.convert("RGB"),
                                return_tensors="pt")
+    device = next(pack["model"].parameters()).device
+    inputs = {k: v.to(device) for k, v in inputs.items()}
     with torch.no_grad():
         out = pack["model"].generate(**inputs, max_new_tokens=40)
     return pack["processor"].decode(out[0], skip_special_tokens=True).strip()
