@@ -10,3 +10,4 @@ matplotlib>=3.8.0
 pillow>=10.0.0
 requests>=2.31.0
 diffusers>=0.29.0   # local SD-Turbo thumbnail (U4) on the free CPU host
+spaces  # ZeroGPU decorator (no-op off ZeroGPU)
