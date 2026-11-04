@@ -89,7 +89,7 @@ def latent_space_figure(source_sentences, summary_sets, max_sentences=40):
 
     model_name = os.environ.get("EMBED_MODEL",
                                 "sentence-transformers/all-MiniLM-L6-v2")
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(model_name, device="cpu")
 
     labels, texts = [], []
     for s in source_sentences[:max_sentences]:
