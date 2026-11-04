@@ -15,6 +15,8 @@ used to produce the summary).
 
 import os
 
+from core.gpu_compat import GPU
+
 BART_MODEL = os.environ.get("BART_MODEL", "sshleifer/distilbart-cnn-6-6")
 LLM_LOCAL_MODEL = os.environ.get("LLM_LOCAL_MODEL", "Qwen/Qwen2.5-0.5B-Instruct")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
@@ -70,6 +72,8 @@ def bart_summary(text: str, length: str = "medium") -> str:
     max_new, min_new = LENGTH_TO_TOKENS.get(length, LENGTH_TO_TOKENS["medium"])
     inputs = tokenizer(text, return_tensors="pt", truncation=True,
                        max_length=1024)
+    device = next(model.parameters()).device
+    inputs = {k: v.to(device) for k, v in inputs.items()}
     import torch
     with torch.no_grad():
         out = model.generate(**inputs, max_new_tokens=max_new,
@@ -119,8 +123,12 @@ def llm_summary(prompt: str, max_tokens: int = 220):
                 .strip())
         return text, f"Gemini ({GEMINI_MODEL})"
 
+    return _local_llm_summary(prompt, max_tokens)
+
+
+def _local_llm_summary(prompt: str, max_tokens: int = 220):
     # No API key configured: run a small open instruct model locally so the
-    # app still works end to end on the free CPU tier.
+    # app still works end to end with no key.
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
     global _causal, _causal_tokenizer
@@ -133,7 +141,7 @@ def llm_summary(prompt: str, max_tokens: int = 220):
         # fp16 keeps the fallback model small enough for free CPU hosts
         dtype = {"float16": torch.float16, "bfloat16": torch.bfloat16,
                  "float32": torch.float32}[os.environ.get("LLM_DTYPE",
-                                                          "float16")]
+                                                          "float32")]
         _causal_tokenizer = AutoTokenizer.from_pretrained(LLM_LOCAL_MODEL)
         _causal = AutoModelForCausalLM.from_pretrained(LLM_LOCAL_MODEL,
                                                        dtype=dtype)
@@ -142,6 +150,8 @@ def llm_summary(prompt: str, max_tokens: int = 220):
     enc = _causal_tokenizer.apply_chat_template(
         messages, add_generation_prompt=True, return_tensors="pt",
         return_dict=True)
+    device = next(_causal.parameters()).device
+    enc = {k: v.to(device) for k, v in enc.items()}
     with torch.no_grad():
         out = _causal.generate(**enc, max_new_tokens=max_tokens,
                                do_sample=False)
@@ -173,6 +183,8 @@ def cross_attention_figure(text: str, length: str = "short",
     max_new, _ = LENGTH_TO_TOKENS.get(length, LENGTH_TO_TOKENS["short"])
     inputs = tokenizer(text, return_tensors="pt", truncation=True,
                        max_length=512)
+    device = next(model.parameters()).device
+    inputs = {k: v.to(device) for k, v in inputs.items()}
     src_tokens = tokenizer.convert_ids_to_tokens(inputs["input_ids"][0])
     with torch.no_grad():
         gen = model.generate(**inputs, max_new_tokens=max_new,
