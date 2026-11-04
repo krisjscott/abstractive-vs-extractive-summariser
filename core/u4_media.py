@@ -8,6 +8,7 @@ U4 task: "Produce a TTS audio summary and generated thumbnail."
                           offline fallback so the app never breaks.
 """
 
+from core.gpu_compat import GPU
 import os
 
 SD_MODEL = os.environ.get("SD_MODEL", "stabilityai/sd-turbo")
@@ -39,22 +40,39 @@ def _hf_inference_thumbnail(prompt: str, out_path: str) -> bool:
     return True
 
 
-def _local_diffusers_thumbnail(prompt: str, out_path: str) -> bool:
-    """Local SD-Turbo path - the guaranteed no-cost real generation route
-    on a CPU host (slow: a few minutes). Used when diffusers is installed."""
+def _local_diffusers_thumbnail(prompt: str, out_path: str,
+                               force_cpu: bool = False) -> bool:
+    """Local SD-Turbo generation (real diffusion, no API). Runs on GPU when
+    one is attached, otherwise a genuine CPU pass (slow: 1-3 minutes)."""
     if os.environ.get("LOCAL_DIFFUSERS", "1") == "0":
         return False
+    import gc
+    pipe = None
     try:
         import torch
         from diffusers import AutoPipelineForText2Image
+        on_gpu = (not force_cpu) and torch.cuda.is_available()
         pipe = AutoPipelineForText2Image.from_pretrained(
-            SD_MODEL, torch_dtype=torch.float32)
+            SD_MODEL, torch_dtype=torch.float16 if on_gpu else torch.float32)
+        if on_gpu:
+            pipe = pipe.to("cuda")
         image = pipe(prompt=prompt, num_inference_steps=2,
                      guidance_scale=0.0).images[0]
         image.save(out_path)
         return True
     except Exception:
         return False
+    finally:
+        del pipe
+        gc.collect()
+
+
+@GPU
+def _gpu_diffusers_thumbnail(prompt: str, out_path: str) -> bool:
+    """ZeroGPU entry point: same real SD-Turbo generation on the attached
+    GPU. Raises when the host cannot attach a GPU (quota/capacity), which
+    generate_thumbnail catches before the genuine CPU fallback."""
+    return _local_diffusers_thumbnail(prompt, out_path)
 
 
 def _title_card_thumbnail(title: str, out_path: str) -> None:
@@ -91,7 +109,12 @@ def generate_thumbnail(title: str, summary: str,
               f"{summary[:200]}")
     if _hf_inference_thumbnail(prompt, out_path):
         return out_path, f"HF Inference API ({SD_MODEL})"
-    if _local_diffusers_thumbnail(prompt, out_path):
-        return out_path, f"local diffusers ({SD_MODEL})"
+    try:
+        if _gpu_diffusers_thumbnail(prompt, out_path):
+            return out_path, f"local diffusers on GPU ({SD_MODEL})"
+    except Exception:
+        pass  # no GPU quota/capacity on this host - try a real CPU pass
+    if _local_diffusers_thumbnail(prompt, out_path, force_cpu=True):
+        return out_path, f"local diffusers on CPU ({SD_MODEL}, slow)"
     _title_card_thumbnail(title, out_path)
-    return out_path, "PIL title-card fallback (no HF_TOKEN set)"
+    return out_path, "PIL title-card fallback (diffusion unavailable)"
