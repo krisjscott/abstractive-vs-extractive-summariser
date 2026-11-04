@@ -7,6 +7,7 @@ unsupported (a potential hallucination) when no source sentence entails it.
 This is the measured hallucination test plus the app's safety guardrail.
 """
 
+from core.gpu_compat import GPU
 import os
 
 NLI_MODEL = os.environ.get("NLI_MODEL", "cross-encoder/nli-deberta-v3-xsmall")
@@ -20,7 +21,7 @@ def _load_nli():
     global _nli, _label_ids
     if _nli is None:
         from sentence_transformers import CrossEncoder
-        _nli = CrossEncoder(NLI_MODEL, max_length=512)
+        _nli = CrossEncoder(NLI_MODEL, max_length=512, device="cpu")
         id2label = {int(k): v.lower() for k, v in
                     _nli.model.config.id2label.items()}
         _label_ids = {name: i for i, name in id2label.items()}
