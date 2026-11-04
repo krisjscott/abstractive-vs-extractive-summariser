@@ -37,6 +37,12 @@ intended for medical, legal or financial decision support.
   made-up cost figure) and flagged a small LLM's paraphrase drift, but it
   also produced paraphrase false positives - a flag means 'unverified',
   not 'wrong', and threshold choice (0.5) trades false alarms against misses.
+- Verified live on the hosted app (Nov 4, 2026): the NLI guardrail matches
+  each summary sentence against single source sentences, so a faithful
+  sentence that COMBINES facts from several source sentences can be falsely
+  flagged (observed: a correct 4-fact combined sentence flagged, entailment
+  0.001) while a genuinely fabricated claim in the same summary was
+  correctly flagged. Treat flags as a review prompt, not a verdict.
 - Benchmark articles are synthetic, AI-authored texts written for this
   project, avoiding copyrighted news content and personal data; their
   reference summaries are also AI-authored, not human gold references.
