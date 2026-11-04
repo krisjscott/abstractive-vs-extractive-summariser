@@ -6,7 +6,9 @@ faithful with an NLI guardrail. Built for the Generative AI continuous
 assessment mini project (Roll 22 → P22), covering syllabus units U1-U5 in
 one deployable Gradio app.
 
-**Live demo:** _to be added once deployed_
+**Live demo:** https://huggingface.co/spaces/krisjscott/abstractive-vs-extractive-summariser (public, free, no login needed - every visitor runs the full text pipeline anonymously on CPU; the SD-Turbo thumbnail also runs as genuine CPU diffusion when no GPU quota is available, which takes 1-3 min)
+
+![Demo screenshot](assets/demo_screenshot.png)
 **Author:** Krish Kumar (Roll 22)
 
 ## Unit coverage
@@ -21,6 +23,18 @@ one deployable Gradio app.
 
 Deliverables: summariser app ✓ · ROUGE table on 10 articles
 (`benchmark/RESULTS.md`) ✓ · hallucination flags (in-app + benchmark) ✓
+
+## Deployment notes (HF Spaces ZeroGPU)
+
+- Hosted free on Hugging Face Spaces. The free tier offered on this account
+  is ZeroGPU, so the app is CPU-first: TextRank, BART, the local LLM, the
+  NLI guardrail, BLIP captions, the latent view and the attention heatmap
+  all run on the container CPU - no quota, works for anonymous visitors.
+- The SD-Turbo thumbnail tries ZeroGPU first and falls back to genuine CPU
+  diffusion (slow, 1-3 min); a PIL title card is used only if diffusion
+  itself fails, and the UI always names the backend that produced the image.
+- First click after a container (re)start downloads the models (~2.5 GB):
+  allow 1-2 min for that first run; later runs finish in seconds.
 
 ## Quickstart
 
