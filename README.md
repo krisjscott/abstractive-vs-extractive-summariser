@@ -8,7 +8,9 @@ one deployable Gradio app.
 
 **Live demo:** https://huggingface.co/spaces/krisjscott/abstractive-vs-extractive-summariser (public, free, no login needed - every visitor runs the full text pipeline anonymously on CPU; the SD-Turbo thumbnail also runs as genuine CPU diffusion when no GPU quota is available, which takes 1-3 min)
 
-![Demo screenshot](assets/demo_screenshot.png)
+![Demo screenshot](https://huggingface.co/spaces/krisjscott/abstractive-vs-extractive-summariser/resolve/main/assets/demo_screenshot.png)
+
+Architecture diagram: [assets/architecture.png](https://huggingface.co/spaces/krisjscott/abstractive-vs-extractive-summariser/resolve/main/assets/architecture.png) (image files are served from the Space repo; see note below)
 **Author:** Krish Kumar (Roll 22)
 
 ## Unit coverage
@@ -25,6 +27,11 @@ Deliverables: summariser app ✓ · ROUGE table on 10 articles
 (`benchmark/RESULTS.md`) ✓ · hallucination flags (in-app + benchmark) ✓
 
 ## Deployment notes (HF Spaces ZeroGPU)
+
+- Note on assets: the two image files live in the Hugging Face Space repo
+  (linked above) rather than duplicated here.
+
+
 
 - Hosted free on Hugging Face Spaces. The free tier offered on this account
   is ZeroGPU, so the app is CPU-first: TextRank, BART, the local LLM, the
