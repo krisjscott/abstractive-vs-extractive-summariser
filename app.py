@@ -67,38 +67,50 @@ def run_pipeline(choice, article, reference, figures, length, style,
 
     # --- U3: BLIP figure captions injected into the article ---------------
     if figures:
-        from PIL import Image
-        progress(0.05, desc="Captioning figures with BLIP (U3)...")
-        images = [Image.open(f.name if hasattr(f, "name") else f)
-                  for f in figures]
-        captions = caption_images(images)
-        work_article = augment_article_with_captions(work_article, captions)
-        captions_md = "### Figure captions (U3)\n" + "\n".join(
-            f"- Figure {i + 1}: {c}" for i, c in enumerate(captions))
+        try:
+            from PIL import Image
+            progress(0.05, desc="Captioning figures with BLIP (U3)...")
+            images = [Image.open(f.name if hasattr(f, "name") else f)
+                      for f in figures]
+            captions = caption_images(images)
+            work_article = augment_article_with_captions(work_article,
+                                                         captions)
+            captions_md = "### Figure captions (U3)\n" + "\n".join(
+                f"- Figure {i + 1}: {c}" for i, c in enumerate(captions))
+        except Exception as e:
+            captions_md = ("_Figure captioning unavailable on this host: "
+                           + str(e).splitlines()[0][:160] + "_")
 
     # --- U2: three summarisation methods -----------------------------------
-    summaries, backends = {}, {}
+    summaries, backends, failures = {}, {}, {}
     steps = [m for m in ("TextRank", "BART/T5", "LLM") if m in methods]
     for i, m in enumerate(steps):
         progress(0.1 + 0.4 * i / max(len(steps), 1), desc=f"{m} summary...")
-        if m == "TextRank":
-            summaries["TextRank (extractive)"] = textrank_summary(
-                work_article, sentence_count=5)
-        elif m == "BART/T5":
-            summaries["BART/T5 (abstractive)"] = bart_summary(
-                work_article, length=length)
-        elif m == "LLM":
-            text, backend = llm_summary(
-                build_prompt(work_article, technique, length, style))
-            summaries["LLM"] = text
-            backends["LLM"] = backend
-    if not summaries:
+        try:
+            if m == "TextRank":
+                summaries["TextRank (extractive)"] = textrank_summary(
+                    work_article, sentence_count=5)
+            elif m == "BART/T5":
+                summaries["BART/T5 (abstractive)"] = bart_summary(
+                    work_article, length=length)
+            elif m == "LLM":
+                text, backend = llm_summary(
+                    build_prompt(work_article, technique, length, style))
+                summaries["LLM"] = text
+                backends["LLM"] = backend
+        except Exception as e:
+            failures[m] = str(e).splitlines()[0][:200]
+    if not summaries and not failures:
         raise gr.Error("Select at least one method in the sidebar.")
 
     summaries_md = "### Summaries (U2)\n" + "\n\n".join(
         f"**{name}**"
         + (f"  \n_backend: {backends[name]}_" if name in backends else "")
         + f"\n\n{text}" for name, text in summaries.items())
+    if failures:
+        summaries_md += "\n\n" + "\n\n".join(
+            f"**{name}** - _unavailable on this host: {why}_"
+            for name, why in failures.items())
 
     # --- U5: NLI faithfulness guardrail ------------------------------------
     progress(0.55, desc="NLI faithfulness check (U5)...")
@@ -106,9 +118,13 @@ def run_pipeline(choice, article, reference, figures, length, style,
                 "_An NLI classifier signal: a flag means the sentence could "
                 "not be verified against the source - not proof of error, "
                 "and unflagged text is not guaranteed correct._\n\n")
-    flags_md += "\n\n".join(
-        _flags_markdown(name, check_faithfulness(work_article, text))
-        for name, text in summaries.items())
+    for name, text in summaries.items():
+        try:
+            flags_md += "\n\n" + _flags_markdown(
+                name, check_faithfulness(work_article, text))
+        except Exception as e:
+            flags_md += (f"\n\n**{name}** - _faithfulness check unavailable "
+                         f"on this host: {str(e).splitlines()[0][:160]}_")
 
     # --- ROUGE vs reference -------------------------------------------------
     rouge_md = ""
@@ -143,14 +159,24 @@ def run_pipeline(choice, article, reference, figures, length, style,
         prompts_md = "### Prompt-technique comparison (U1)\n"
         for key, (label, _) in PROMPT_TECHNIQUES.items():
             p = build_prompt(work_article, key, length, style)
-            out, backend = llm_summary(p)
-            prompts_md += (f"**{label}** (backend: {backend})\n\n{out}\n\n")
+            try:
+                out, backend = llm_summary(p)
+                prompts_md += (f"**{label}** (backend: {backend})"
+                               f"\n\n{out}\n\n")
+            except Exception as e:
+                prompts_md += (f"**{label}** - _unavailable on this host: "
+                               f"{str(e).splitlines()[0][:160]}_\n\n")
 
     # --- U2 deep layer: cross-attention heatmap ------------------------------
     attn_fig = None
     if "Attention heatmap (U2)" in extras and "BART/T5" in methods:
         progress(0.85, desc="Extracting cross-attention (U2)...")
-        attn_fig = cross_attention_figure(work_article, length="short")
+        try:
+            attn_fig = cross_attention_figure(work_article, length="short")
+        except Exception as e:
+            attn_fig = None
+            flags_md += ("\n\n_attention heatmap unavailable on this host: "
+                         + str(e).splitlines()[0][:160] + "_")
 
     # --- U4: TTS audio + generated thumbnail ---------------------------------
     audio_path, thumb_path, thumb_note = None, None, ""
@@ -158,14 +184,22 @@ def run_pipeline(choice, article, reference, figures, length, style,
         progress(0.92, desc="TTS audio + thumbnail (U4)...")
         first = next(iter(summaries.values()))
         tmp = tempfile.mkdtemp()
-        audio_path = tts_summary(first, os.path.join(tmp, "summary.mp3"))
+        try:
+            audio_path = tts_summary(first, os.path.join(tmp, "summary.mp3"))
+        except Exception as e:
+            thumb_note += ("TTS unavailable on this host: "
+                           + str(e).splitlines()[0][:120] + ". ")
         if choice in SAMPLES:
             title = choice.split(": ", 1)[-1]
         else:
             title = split_sentences(article)[0][:80]
-        thumb_path, backend = generate_thumbnail(
-            title, first, os.path.join(tmp, "thumbnail.png"))
-        thumb_note = f"thumbnail backend: {backend}"
+        try:
+            thumb_path, backend = generate_thumbnail(
+                title, first, os.path.join(tmp, "thumbnail.png"))
+            thumb_note = f"thumbnail backend: {backend}"
+        except Exception as e:
+            thumb_note += ("Thumbnail unavailable on this host: "
+                           + str(e).splitlines()[0][:120])
 
     return (captions_md, summaries_md, flags_md, rouge_md, prompts_md,
             latent_fig, attn_fig, audio_path, thumb_path, thumb_note)
@@ -231,4 +265,5 @@ with gr.Blocks(title=TITLE) as demo:
                 "from the host's secrets settings only.")
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_name="0.0.0.0",
+                server_port=int(os.environ.get("PORT", 7860)))
